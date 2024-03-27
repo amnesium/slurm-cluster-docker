@@ -1,0 +1,216 @@
+ARG slurm_version=23.11.5-1
+
+# ----------------------------------------------------
+FROM docker.io/library/rockylinux:9.2 AS slurm-base
+# ----------------------------------------------------
+
+ARG slurm_version
+
+# Configure local repo
+COPY ./out/ /opt/local-repo/
+
+RUN dnf install -y \
+  dnf-plugins-core \
+  epel-release \
+  && dnf install -y createrepo yum-utils \
+  && createrepo /opt/local-repo/x86_64 \
+  && mv /opt/local-repo/local-repo.repo /etc/yum.repos.d/
+
+# Install dependencies
+RUN dnf install -y \
+  slurm-${slurm_version}.el9.x86_64 \
+  xz \
+  && dnf clean all
+
+# Munge & Slurm configurations
+RUN mkdir -p /run/munge && chown munge:munge /run/munge \
+  && mkdir -p /var/run/munge && chown munge:munge /var/run/munge \
+  && mkdir -p /var/{spool,run}/{slurmd,slurmctl}/ \
+  && mkdir -p /var/log/{slurm,slurmctl}/
+ENV SLURM_CONF=/etc/slurm/slurm.conf
+
+COPY s6-rc.d/munge/ /etc/s6-overlay/s6-rc.d/munge/
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d/ \
+  && touch /etc/s6-overlay/s6-rc.d/user/contents.d/munge 
+
+ENV S6_OVERLAY_VERSION=3.1.1.2
+
+RUN curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz -o /tmp/s6-overlay-noarch.tar.xz \
+  && tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz \
+  && curl -fsSL https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-x86_64.tar.xz -o /tmp/s6-overlay-x86_64.tar.xz \
+  && tar -C / -Jxpf /tmp/s6-overlay-x86_64.tar.xz \
+  && rm -rf /tmp/*
+
+# Quick and (very) dirty  
+RUN useradd -ms /bin/bash user \
+  && echo 'user:changeme' | chpasswd \
+  && useradd slurm
+
+# ----------------------------------------------------
+FROM slurm-base AS slurm-login
+# ----------------------------------------------------
+
+ARG slurm_version
+
+# Install dependencies
+RUN dnf config-manager --set-enabled crb \
+  && dnf install -y \
+  zsh \
+  slurm-contribs-${slurm_version}.el9.x86_64 \
+  slurm-libpmi-${slurm_version}.el9.x86_64 \
+  slurm-pam_slurm-${slurm_version}.el9.x86_64 \
+  slurm-perlapi-${slurm_version}.el9.x86_64 \
+  s3cmd \
+  pmix4 \
+  hwloc \
+  hwloc-libs \
+  hwloc-devel \
+  screen \
+  tmux \
+  git \
+  openssh-server \
+  openssh-clients \
+  wget \
+  vim \
+  sudo \
+  htop \
+  procps \
+  net-tools \
+  bind-utils \
+  iproute \
+  netcat \
+  rsync \
+  && dnf clean all
+
+COPY s6-rc.d/ssh/ /etc/s6-overlay/s6-rc.d/ssh/
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d/ \
+  && touch /etc/s6-overlay/s6-rc.d/user/contents.d/ssh
+
+EXPOSE 22/tcp
+
+ENTRYPOINT ["/init"]
+
+# -------------------------------------------------------
+FROM slurm-base AS slurm-controller
+# -------------------------------------------------------
+
+ARG slurm_version
+
+RUN dnf config-manager --set-enabled crb \
+  && dnf install -y \
+  slurm-slurmctld-${slurm_version}.el9.x86_64 \
+  slurm-contribs-${slurm_version}.el9.x86_64 \
+  slurm-libpmi-${slurm_version}.el9.x86_64 \
+  slurm-pam_slurm-${slurm_version}.el9.x86_64 \
+  slurm-perlapi-${slurm_version}.el9.x86_64 \
+  pmix4 \
+  hwloc \
+  hwloc-libs \
+  hwloc-devel \
+  pdsh \
+  pdsh-rcmd-ssh \
+  sudo \
+  jq \
+  openssh-clients \
+  net-tools \
+  bind-utils \
+  iproute \
+  which \
+  procps \
+  screen \
+  && dnf clean all
+
+COPY s6-rc.d/slurmctl/ /etc/s6-overlay/s6-rc.d/slurmctl/
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d/ \
+  && touch /etc/s6-overlay/s6-rc.d/user/contents.d/slurmctl
+
+EXPOSE 6817/tcp
+
+VOLUME [ "/var/spool/slurmctl" ]
+
+ENTRYPOINT ["/init"]
+
+# -------------------------------------------------------
+FROM slurm-base AS slurm-rest
+# -------------------------------------------------------
+
+ARG slurm_version
+
+RUN dnf install -y \
+  slurm-slurmrestd-${slurm_version}.el9.x86_64 \
+  && dnf clean all
+
+# API user
+RUN groupadd -r api && useradd --no-log-init -r -g api api
+
+COPY s6-rc.d/slurmrest/ /etc/s6-overlay/s6-rc.d/slurmrest/
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d/ \
+  && touch /etc/s6-overlay/s6-rc.d/user/contents.d/slurmrest
+
+EXPOSE 6820/tcp
+
+ENTRYPOINT ["/init"]
+
+# ----------------------------------------------------
+FROM slurm-base AS slurm-compute
+# ----------------------------------------------------
+
+ARG slurm_version
+
+# Install dependencies
+RUN dnf config-manager --set-enabled crb \
+  && dnf install -y \
+  slurm-slurmd-${slurm_version}.el9.x86_64 \
+  pmix4 \
+  hwloc \
+  hwloc-libs \
+  hwloc-devel \
+  sudo \
+  jq \
+  openssh-clients \
+  net-tools \
+  bind-utils \
+  iproute \
+  which \
+  procps \
+  screen \
+  && dnf clean all
+
+EXPOSE 6818/tcp 6820/tcp
+
+COPY s6-rc.d/slurm/ /etc/s6-overlay/s6-rc.d/slurm/
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d/ \
+  && touch /etc/s6-overlay/s6-rc.d/user/contents.d/slurm
+
+ENTRYPOINT ["/init"]
+
+# ----------------------------------------------------
+FROM docker.io/library/golang:1.18.4 AS slurm-prometheus-exporter-builder
+# ----------------------------------------------------
+
+WORKDIR /app
+RUN apt update -y -q \
+  && apt install -y -q git \
+  && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 -b development https://github.com/vpenso/prometheus-slurm-exporter.git prometheus-slurm-exporter
+RUN cd prometheus-slurm-exporter && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o app .
+
+# ----------------------------------------------------
+FROM slurm-base AS slurm-prometheus-exporter
+# ----------------------------------------------------
+
+ARG slurm_version
+
+WORKDIR /app
+
+COPY --from=slurm-prometheus-exporter-builder /app/prometheus-slurm-exporter/app /usr/sbin/slurm-prometheus-exporter
+
+EXPOSE 8080/tcp
+
+COPY s6-rc.d/slurm-prometheus-exporter/ /etc/s6-overlay/s6-rc.d/slurm-prometheus-exporter/
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d/ \
+  && touch /etc/s6-overlay/s6-rc.d/user/contents.d/slurm-prometheus-exporter
+
+ENV GPU_ACCT false
+
+ENTRYPOINT ["/init"]

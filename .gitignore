@@ -1,0 +1,12 @@
+**/slurm-cluster/certs/*
+**/slurm-cluster/secrets/*
+**/slurm-cluster/state
+**/slurm-cluster/logs
+**/slurm-cluster/slurm/out
+**/nfs-server/.vagrant
+!**/slurm-cluster/.gitkeep
+
+!slurm-cluster/secrets/.gitkeep
+!slurm-cluster/secrets/munge/.gitkeep
+!slurm-cluster/secrets/slurm/.gitkeep
+!slurm-cluster/secrets/ssh/.gitkeep

@@ -1,0 +1,53 @@
+version: "3.8"
+      
+volumes:
+  homedir:
+    driver: local
+    driver_opts:
+      type: "nfs"
+      o: "addr=192.168.121.54,nfsvers=4"
+      device: ":/srv/nfs"
+
+services:
+  slurm-login:
+    build:
+      context: ./slurm
+      dockerfile: Dockerfile.rocky9.2
+      target: slurm-login
+    ports:
+      - "2222:22"
+    volumes:
+      - ./secrets/sshd:/secrets/sshd:ro
+      - ./secrets/slurm:/secrets/slurm:ro
+      - ./secrets/munge:/secrets/munge:ro
+      - ./conf/slurm:/etc/slurm:ro
+      - homedir:/home
+
+  slurm-controller:
+    hostname: slurm-controller
+    build:
+      context: ./slurm
+      dockerfile: Dockerfile.rocky9.2
+      target: slurm-controller
+    depends_on:
+      - slurm-login
+    volumes:
+      - ./secrets/slurm/:/secrets/slurm/:ro
+      - ./conf/slurm:/etc/slurm:ro
+      - ./secrets/munge/:/secrets/munge/:ro
+      - ./state/slurmctl:/var/spool/slurmctl
+      
+  slurm-compute:
+    hostname: slurm-0
+    build:
+      context: ./slurm
+      dockerfile: Dockerfile.rocky9.2
+      target: slurm-compute
+    depends_on:
+      - slurm-controller
+    volumes:
+      - ./secrets/munge/:/secrets/munge/:ro
+      - ./secrets/slurm/:/secrets/slurm/:ro
+      - ./conf/slurm:/etc/slurm:ro
+      - ./state/slurmd:/var/spool/slurmd
+      - homedir:/home

@@ -1,0 +1,22 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  config.vm.provider "libvirt"
+  config.vm.define "master" do |machine|
+    machine.vm.box = "generic/rocky9"
+    config.vm.provision "shell" do |s|
+      s.inline = <<-SHELL
+        systemctl stop firewalld
+        systemctl disable firewalld
+        # Setup NFS
+        dnf install -y nfs-utils
+        systemctl enable nfs-server
+        systemctl start nfs-server
+        mkdir -p /srv/nfs
+        echo "/srv/nfs *(rw,sync,no_root_squash,no_subtree_check)" > /etc/exports
+        exportfs -arv
+      SHELL
+    end
+  end
+end
