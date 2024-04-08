@@ -33,7 +33,8 @@ As it is a demo cluster, there is no RDMA, parallel file system nor GPU support.
 
 **Generate the munge key for slurm**
     
-    dd if=/dev/random of=/secrets/munge/munge.key bs=1024 count=1
+    mkdir -p secrets/munge/
+    dd if=/dev/random of=secrets/munge/munge.key bs=1024 count=1
 
 **Remember to update the IP of the homedir NFS volume in docker-compose.yml with the IP of your VM**
 
