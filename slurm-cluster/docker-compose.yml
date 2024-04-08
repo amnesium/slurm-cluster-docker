@@ -5,7 +5,7 @@ volumes:
     driver: local
     driver_opts:
       type: "nfs"
-      o: "addr=192.168.121.54,nfsvers=4"
+      o: "addr=<nfs-server-ip-address>,nfsvers=4"
       device: ":/srv/nfs"
 
 services:
