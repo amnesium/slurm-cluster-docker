@@ -14,20 +14,29 @@ As it is a demo cluster, there is no RDMA, parallel file system nor GPU support.
 ## Deployment  
   
 ### NFS server (virtual machine)  
-cd nfs-server  
-vagrant up  
+
+    cd nfs-server 
+    vagrant up`
+
 (If you can't see your VM in virt-manager, try: virt-manager -c qemu:///session)  
   
 ### Slurm Cluster (containers)  
 **Build the rpm packages**
-cd ../rpm-builder  
-./build.sh  
-cd ../slurm-cluster
+    
+    cd ../rpm-builder
+    ./build.sh
+    cd ../slurm-cluster
+
 **Generate hostkeys for ssh**
-./regenerate-hostkeys.sh 
+    
+    ./regenerate-hostkeys.sh
+
 **Generate the munge key for slurm**
-dd if=/dev/random of=/secrets/munge/munge.key bs=1024 count=1  
+    
+    dd if=/dev/random of=/secrets/munge/munge.key bs=1024 count=1
+
 **Remember to update the IP of the homedir NFS volume in docker-compose.yml with the IP of your VM**
 
 **Spin-up the cluster!**
-docker compose up -d --build
+    
+    docker compose up -d --build
